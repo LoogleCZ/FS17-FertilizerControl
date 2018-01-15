@@ -1,0 +1,13 @@
+--
+-- Script for controling fertilizer ammount
+--
+-- Author: Martin Fabík (https://www.fb.com/LoogleCZ)
+-- GitHub repository: https://github.com/LoogleCZ/FS17-FertilizerControl
+--
+-- Free for non-comerecial usage!
+--
+-- version ID   - 1.0.0
+-- version date - 2018-01-15 16:27
+--
+-- used namespace: LFC
+--
