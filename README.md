@@ -1,5 +1,3 @@
 # Fertilizer Control for FS17
 
-used l10n:
-
-* lfc_consumptionIndicator
+Script is under development! If you want to help me, let me know first.

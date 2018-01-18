@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="37">
+	<l10n>
+		<!-- For input binding -->
+		<text name="lfc_consumptionSetup" >
+			<en>Set the fertilizer dose</en>
+			<cz>Nastavit dávku hnojiva</cz>
+		</text>
+		<text name="lfc_showConsumption" >
+			<en>Show fertilizer consumption (in l/Ha)</en>
+			<cz>Zobrazovat spotřebu hnojiva (v l/Ha)</cz>
+		</text>
+		<text name="lfc_consumptionUp" >
+			<en>Increase the fertilizer dose</en>
+			<cz>Zvýšit dávku hnojiva</cz>
+		</text>
+		<text name="lfc_consumptionDown" >
+			<en>Reduce the fertilizer dose</en>
+			<cz>Snížit dávku hnojiva</cz>
+		</text>
+		<text name="lfc_consumptionDefault" >
+			<en>Set the fertilizer dose to default</en>
+			<cz>Nastavit výchozí dávku hnojiva</cz>
+		</text>
+		
+		<!-- extras -->
+		<text name="lfc_consumptionIndicator" >
+			<en>Fertilizer consumption: %d l/Ha</en>
+			<cz>Spotřeba hnojiva: %d l/Ha</cz>
+		</text>
+		<text name="lfc_currentConsumption" >
+			<en>Current consumption of fertilizer: %.3f l/s</en>
+			<cz>Aktuálně nastavená spotřeba hnojiva: %.3f l/s</cz>
+		</text>
+	</l10n>
+	
+	<inputBindings>
+		<input name="lfc_consumptionSetup"   category="VEHICLE" key1="KEY_lctrl KEY_c" key2="" button="" device="0" mouse="" />
+		<input name="lfc_showConsumption"    category="VEHICLE" key1="KEY_m"           key2="" button="" device="0" mouse="" />
+		<input name="lfc_consumptionUp"      category="VEHICLE" key1="KEY_j"           key2="" button="" device="0" mouse="" />
+		<input name="lfc_consumptionDown"    category="VEHICLE" key1="KEY_n"           key2="" button="" device="0" mouse="" />
+		<input name="lfc_consumptionDefault" category="VEHICLE" key1="KEY_k"           key2="" button="" device="0" mouse="" />
+	</inputBindings>
+</modDesc>
