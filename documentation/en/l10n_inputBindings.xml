@@ -7,8 +7,16 @@
 			<cz>Nastavit dávku hnojiva</cz>
 		</text>
 		<text name="lfc_showConsumption" >
+			<en>Show/hide fertilizer consumption (in l/Ha)</en>
+			<cz>Zobrazovat/skrýt spotřebu hnojiva (v l/Ha)</cz>
+		</text>
+		<text name="lfc_showConsumption_s" >
 			<en>Show fertilizer consumption (in l/Ha)</en>
 			<cz>Zobrazovat spotřebu hnojiva (v l/Ha)</cz>
+		</text>
+		<text name="lfc_showConsumption_h" >
+			<en>Hide fertilizer consumption (in l/Ha)</en>
+			<cz>Skrýt spotřebu hnojiva (v l/Ha)</cz>
 		</text>
 		<text name="lfc_consumptionUp" >
 			<en>Increase the fertilizer dose</en>
