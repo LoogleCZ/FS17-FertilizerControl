@@ -3,8 +3,16 @@
 	<l10n>
 		<!-- For input binding -->
 		<text name="lfc_consumptionSetup" >
+			<en>Setting of the fertilizer dose</en>
+			<cz>Nastavování dávky hnojiva</cz>
+		</text>
+		<text name="lfc_consumptionSetup_s" >
 			<en>Set the fertilizer dose</en>
 			<cz>Nastavit dávku hnojiva</cz>
+		</text>
+		<text name="lfc_consumptionSetup_h" >
+			<en>Fertilizer dose setting done</en>
+			<cz>Ukončit nastavování dávky hnojiva</cz>
 		</text>
 		<text name="lfc_showConsumption" >
 			<en>Show/hide fertilizer consumption (in l/Ha)</en>

@@ -11,6 +11,13 @@
 --
 -- used namespace: LFC
 --
+-- This is development version! DO not use it on release!
+--
+--
+-- TODO: changge scale to all fillTypes not only for default
+-- TODO: animaation for fertilizer dose
+-- TODO: support for changing dose by non linear steps
+--
 
 FertilizerControl = {};
 
@@ -25,6 +32,8 @@ end;
 function FertilizerControl:load(savegame)
 	self.LFC = {};
 	self.LFC.fConsumption = 0;
+	self.LFC.settingStatus = false;
+	self.LFC.currentFillType = FillUtil.FILLTYPE_UNKNOWN;
 	self.LFC.widthCalculationDynamic = (Utils.getNoNil(getXMLString(self.xmlFile, "vehicle.fertilizerControl.consumptionIndicator#widthCalculation"), "dynamic") == "dynamic");
 	if self.LFC.widthCalculationDynamic then
 		self.LFC.width = 0;
@@ -32,17 +41,26 @@ function FertilizerControl:load(savegame)
 		self.LFC.width = self.sprayUsageScale.workingWidth;
 	end;
 	self.LFC.minimumDisplaySpeed = Utils.getNoNil(getXMLInt(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#minimumDisplaySpeed"), 4);
-	self.LFC.indicatorAllowed = Utils.getNoNil(getXMLBool(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#active"), true);
-	self.LFC.indicatorActived = Utils.getNoNil(getXMLBool(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#defaultActive"), true);
+	self.LFC.indicatorAllowed    = Utils.getNoNil(getXMLBool(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#active"), true);
+	self.LFC.indicatorActived    = Utils.getNoNil(getXMLBool(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#defaultActive"), true);
+	
+	self.LFC.consumption = {};
+	self.LFC.consumption.minimum = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#mminimumScale");
+	self.LFC.consumption.maximum = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#maximumScale");
+	self.LFC.consumption.step    = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#scaleStep");
+	self.LFC.defaultConsumptionDefault = self.sprayUsageScale.default;
+	self.LFC.defaultConsumption  = {};
 end;
 
 function FertilizerControl:postLoad(savegame)
 	self.LFC.indicatorActived = Utils.getNoNil(getXMLBool(savegame.xmlFile, savegame.key ..	"#showFertilizerConsumption"), self.LFC.indicatorActived);
+	self.sprayUsageScale.default = Utils.getNoNil(getXMLFloat(savegame.xmlFile, savegame.key ..	"#defaultFertilizerScale"), self.sprayUsageScale.default);
 end;
 
 function FertilizerControl:getSaveAttributesAndNodes(nodeIdent)
-	attributes= " showFertilizerConsumption=\"" .. tostring(self.LFC.indicatorActived) .. "\"";
-    nodes = "";
+	local attributes = " showFertilizerConsumption=\"" .. tostring(self.LFC.indicatorActived) .. "\"";
+    local nodes = "";
+	attributes = attributes .. " defaultFertilizerScale=\"" .. tostring(self.sprayUsageScale.default) .. "\""
     return attributes, nodes;
 end
 
@@ -50,11 +68,23 @@ function FertilizerControl:delete() end;
 
 function FertilizerControl:update(dt)
 	if self.isClient then
-		if InputBinding.isPressed(InputBinding.lfc_consumptionSetup) then
+		if InputBinding.hasEvent(InputBinding.lfc_consumptionSetup) then
+			self.LFC.settingStatus = not self.LFC.settingStatus;
+		end;
+		if self.LFC.settingStatus then
 			if self.LFC.indicatorAllowed then
 				if InputBinding.hasEvent(InputBinding.lfc_showConsumption) then
 					self.LFC.indicatorActived = not self.LFC.indicatorActived;
 				end;
+			end;
+			if InputBinding.hasEvent(InputBinding.lfc_consumptionDefault) then
+				self.sprayUsageScale.default = self.LFC.defaultConsumptionDefault;
+			end;
+			if InputBinding.hasEvent(InputBinding.lfc_consumptionUp) and (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
+				self.sprayUsageScale.default = self.sprayUsageScale.default + self.LFC.consumption.step;
+			end;
+			if InputBinding.hasEvent(InputBinding.lfc_consumptionDown) and (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
+				self.sprayUsageScale.default = self.sprayUsageScale.default - self.LFC.consumption.step;
 			end;
 		end;
 	end;
@@ -62,34 +92,21 @@ end;
 
 function FertilizerControl:updateTick(dt)
 	if self.isClient then
-		--
-		-- self.lastSpeed: speed in kilometers per second
-		--
-		-- Working width with scale: self.sprayUsageScale.workingWidth
-		--							 self.sprayUsageScale.default
-		-- By changing default scale we can increase or decrease consumption
-		-- Must change for each filltype 
-		--
+		local fillType = self:getUnitLastValidFillType(self.sprayer.fillUnitIndex);
+		if fillType == FillUtil.FILLTYPE_UNKNOWN and self.fillUnits[self.sprayer.fillUnitIndex] ~= nil then
+			for unitFillType,state in pairs(self.fillUnits[self.sprayer.fillUnitIndex].fillTypes) do
+				if unitFillType ~= FillUtil.FILLTYPE_UNKNOWN and state then
+					fillType = unitFillType;
+					break;
+				end
+			end
+		end
+		self.LFC.currentFillType = fillType;
 		if self.LFC.indicatorAllowed and self.LFC.indicatorActived then
-			print("==== DEBUG ====");
-			print("Speed (km/h): " .. tostring(self.lastSpeed*3600));
-			print("Speed (m/s): " .. tostring((self.lastSpeed*1000)));
-			print("Attacher vehicle: " .. tostring(self.attacherVehicle));
-			print("GetIsActive: " .. tostring(self:getIsActive()));
-			print("GetIsTurnedOn: " .. tostring(self:getIsTurnedOn()));
 			if self.attacherVehicle ~= nil
 				and self:getIsActive()
 				and self:getIsTurnedOn()
 				and (self.lastSpeed*3600) > self.LFC.minimumDisplaySpeed then
-				local fillType = self:getUnitLastValidFillType(self.sprayer.fillUnitIndex);
-				if fillType == FillUtil.FILLTYPE_UNKNOWN and self.fillUnits[self.sprayer.fillUnitIndex] ~= nil then
-					for unitFillType,state in pairs(self.fillUnits[self.sprayer.fillUnitIndex].fillTypes) do
-						if unitFillType ~= FillUtil.FILLTYPE_UNKNOWN and state then
-							fillType = unitFillType;
-							break;
-						end
-					end
-				end
 				local litersPerSecond = self:getLitersPerSecond(fillType);
 				
 				width = self.LFC.width;
@@ -106,7 +123,6 @@ function FertilizerControl:updateTick(dt)
 				
 				self.LFC.fConsumption = (litersPerSecond/(width*self.lastSpeed))*10;
 			end;
-			print("===============");
 		end;
 	end;
 end;
@@ -118,18 +134,27 @@ function FertilizerControl:keyEvent(unicode, sym, modifier, isDown) end;
 
 function FertilizerControl:draw()
 	if self.isClient then
-		g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionSetup"), InputBinding.lfc_consumptionSetup);
-		if InputBinding.isPressed(InputBinding.lfc_consumptionSetup) then
+		if self.LFC.settingStatus then
+			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionSetup_s"), InputBinding.lfc_consumptionSetup);
+		else
+			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionSetup_h"), InputBinding.lfc_consumptionSetup);
+		end;
+		if self.LFC.settingStatus then
 			if self.LFC.indicatorAllowed then
 				if self.LFC.indicatorActived then
-					g_currentMission:addHelpButtonText(g_i18n:getText("lfc_showConsumption_h"), InputBinding.lfc_showConsumption);
+					g_currentMission:addHelpButtonText(g_i18n:getText("lfc_showConsumption_h"), InputBinding.lfc_showConsumption, nil, GS_PRIO_HIGH);
 				else
-					g_currentMission:addHelpButtonText(g_i18n:getText("lfc_showConsumption_s"), InputBinding.lfc_showConsumption);
+					g_currentMission:addHelpButtonText(g_i18n:getText("lfc_showConsumption_s"), InputBinding.lfc_showConsumption, nil, GS_PRIO_HIGH);
 				end;
 			end;
-			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp);
-			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDefault"), InputBinding.lfc_consumptionDefault);
-			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDown"), InputBinding.lfc_consumptionDown);
+			if (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
+				g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp, nil, GS_PRIO_HIGH);
+			end;
+			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDefault"), InputBinding.lfc_consumptionDefault, nil, GS_PRIO_HIGH);
+			if (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
+				g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDown"), InputBinding.lfc_consumptionDown, nil, GS_PRIO_HIGH);
+			end;
+			g_currentMission:addExtraPrintText(string.format(g_i18n:getText("lfc_currentConsumption"), self:getLitersPerSecond(self.LFC.currentFillType)));
 		end;
 	
 		if self.LFC.indicatorAllowed and self.LFC.indicatorActived then
