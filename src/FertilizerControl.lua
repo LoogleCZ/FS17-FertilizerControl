@@ -14,7 +14,6 @@
 -- This is development version! DO not use it on release!
 --
 --
--- TODO: changge scale to all fillTypes not only for default
 -- TODO: animaation for fertilizer dose
 -- TODO: support for changing dose by non linear steps
 --
@@ -50,11 +49,17 @@ function FertilizerControl:load(savegame)
 	self.LFC.consumption.step    = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#scaleStep");
 	self.LFC.defaultConsumptionDefault = self.sprayUsageScale.default;
 	self.LFC.defaultConsumption  = {};
+	for k,v in pairs(self.sprayUsageScale.fillTypeScales) do
+		self.LFC.defaultConsumption[k] = v;
+	end;
 end;
 
 function FertilizerControl:postLoad(savegame)
 	self.LFC.indicatorActived = Utils.getNoNil(getXMLBool(savegame.xmlFile, savegame.key ..	"#showFertilizerConsumption"), self.LFC.indicatorActived);
 	self.sprayUsageScale.default = Utils.getNoNil(getXMLFloat(savegame.xmlFile, savegame.key ..	"#defaultFertilizerScale"), self.sprayUsageScale.default);
+	for k,v in pairs(self.LFC.defaultConsumption) do
+		self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v
+	end;
 end;
 
 function FertilizerControl:getSaveAttributesAndNodes(nodeIdent)
@@ -79,12 +84,21 @@ function FertilizerControl:update(dt)
 			end;
 			if InputBinding.hasEvent(InputBinding.lfc_consumptionDefault) then
 				self.sprayUsageScale.default = self.LFC.defaultConsumptionDefault;
+				for k,v in pairs(self.LFC.defaultConsumption) do
+					self.sprayUsageScale.fillTypeScales[k] = v;
+				end;
 			end;
 			if InputBinding.hasEvent(InputBinding.lfc_consumptionUp) and (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
 				self.sprayUsageScale.default = self.sprayUsageScale.default + self.LFC.consumption.step;
+				for k,v in pairs(self.LFC.defaultConsumption) do
+					self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
+				end;
 			end;
 			if InputBinding.hasEvent(InputBinding.lfc_consumptionDown) and (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
 				self.sprayUsageScale.default = self.sprayUsageScale.default - self.LFC.consumption.step;
+				for k,v in pairs(self.LFC.defaultConsumption) do
+					self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
+				end;
 			end;
 		end;
 	end;
