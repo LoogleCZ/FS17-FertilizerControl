@@ -22,7 +22,7 @@ In this file I will describe XML schema for Fertilizer Control specialization. I
 		[mminimumScale=""//double
 		maximumScale=""//double
 		scaleStep=""//double
-			[( amination=""//string | clipRoot=""//i3d_node clip=""//string )]
+			[( animation=""//string | clipRoot=""//i3d_node clip=""//string ) animSpeedScale="1"]
 		]>
 		[<step scale=""//double [animationTime=""//double]/>]
 		...

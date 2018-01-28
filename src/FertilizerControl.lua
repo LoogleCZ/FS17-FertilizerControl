@@ -7,15 +7,19 @@
 -- Free for non-comerecial usage!
 --
 -- version ID   - 1.0.0
--- version date - 2018-01-18 19:00
+-- version date - 2018-01-28 22:05
 --
 -- used namespace: LFC
 --
 -- This is development version! DO not use it on release!
 --
 --
--- TODO: animaation for fertilizer dose
+-- TODO: FIX setting animation after game loads
+-- TODO: test i3d animations
 -- TODO: support for changing dose by non linear steps
+-- TODO: solve floating point inaccuracy 
+-- TODO: revide code and decrese algo complexity
+-- TODO: MP connection
 --
 
 FertilizerControl = {};
@@ -47,6 +51,29 @@ function FertilizerControl:load(savegame)
 	self.LFC.consumption.minimum = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#mminimumScale");
 	self.LFC.consumption.maximum = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#maximumScale");
 	self.LFC.consumption.step    = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#scaleStep");
+	if SpecializationUtil.hasSpecialization(AnimatedVehicle, self.specializations) then
+		self.LFC.consumption.animation = getXMLString(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#animation");
+		self.LFC.consumption.animClip  = nil;
+		self.LFC.consumption.animSpeedScale = Utils.getNoNil(getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#animSpeedScale"), 1);
+		self.LFC.consumption.desiredAnimTime = 0;	
+		self.LFC.consumption.animDirection = 1;
+		
+		local clipParent = Utils.indexToObject(self.components, getXMLString(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#clipRoot"));
+		if clipParent ~= nil and clipParent ~= 0 then
+			self.LFC.consumption.animClip = {};
+			self.LFC.consumption.animClip.animCharSet = getAnimCharacterSet(clipParent);
+			if self.LFC.consumption.animClip.animCharSet ~= 0 then
+				local clip = getAnimClipIndex(self.LFC.consumption.animClip.animCharSet, getXMLString(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#clip"));
+				assignAnimTrackClip(self.LFC.consumption.animClip.animCharSet, 0, clip);
+				setAnimTrackLoopState(self.LFC.consumption.animClip.animCharSet, 0, looping);
+				self.LFC.consumption.animClip.animDuration = getAnimClipDuration(self.LFC.consumption.animClip.animCharSet, clip);
+				setAnimTrackTime(self.LFC.consumption.animClip.animCharSet, 0, 0);
+			end;
+		end;
+	end;
+	
+	self.LFC.consumption.canAnimation = (self.LFC.consumption.animClip ~= nil and self.LFC.consumption.animClip.animCharSet ~= nil and self.LFC.consumption.animClip.animCharSet ~= 0) or self.LFC.consumption.animation ~= nil;
+		
 	self.LFC.defaultConsumptionDefault = self.sprayUsageScale.default;
 	self.LFC.defaultConsumption  = {};
 	for k,v in pairs(self.sprayUsageScale.fillTypeScales) do
@@ -60,6 +87,7 @@ function FertilizerControl:postLoad(savegame)
 	for k,v in pairs(self.LFC.defaultConsumption) do
 		self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v
 	end;
+	FertilizerControl:setAnimTime_test(self, ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum)));
 end;
 
 function FertilizerControl:getSaveAttributesAndNodes(nodeIdent)
@@ -73,10 +101,24 @@ function FertilizerControl:delete() end;
 
 function FertilizerControl:update(dt)
 	if self.isClient then
+		if self.LFC.consumption.canAnimation then 
+			if self.LFC.consumption.animDirection > 0 then 
+				if self.LFC.consumption.desiredAnimTime < FertilizerControl:getAnimTime_test(self) then
+					FertilizerControl:setAnimTime_test(self, self.LFC.consumption.desiredAnimTime);
+					FertilizerControl:stopAnimation_test(self);
+				end;
+			else
+				if self.LFC.consumption.desiredAnimTime > FertilizerControl:getAnimTime_test(self) then
+					FertilizerControl:setAnimTime_test(self, self.LFC.consumption.desiredAnimTime);
+					FertilizerControl:stopAnimation_test(self);
+				end;
+			end;
+		end;
 		if InputBinding.hasEvent(InputBinding.lfc_consumptionSetup) then
 			self.LFC.settingStatus = not self.LFC.settingStatus;
 		end;
 		if self.LFC.settingStatus then
+			local valueChanged = false;
 			if self.LFC.indicatorAllowed then
 				if InputBinding.hasEvent(InputBinding.lfc_showConsumption) then
 					self.LFC.indicatorActived = not self.LFC.indicatorActived;
@@ -87,17 +129,31 @@ function FertilizerControl:update(dt)
 				for k,v in pairs(self.LFC.defaultConsumption) do
 					self.sprayUsageScale.fillTypeScales[k] = v;
 				end;
+				valueChanged = true;
 			end;
 			if InputBinding.hasEvent(InputBinding.lfc_consumptionUp) and (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
 				self.sprayUsageScale.default = self.sprayUsageScale.default + self.LFC.consumption.step;
 				for k,v in pairs(self.LFC.defaultConsumption) do
 					self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
 				end;
+				valueChanged = true;
 			end;
 			if InputBinding.hasEvent(InputBinding.lfc_consumptionDown) and (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
 				self.sprayUsageScale.default = self.sprayUsageScale.default - self.LFC.consumption.step;
 				for k,v in pairs(self.LFC.defaultConsumption) do
 					self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
+				end;
+				valueChanged = true;
+			end;
+			if valueChanged then
+				self.LFC.consumption.desiredAnimTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
+				if math.abs(self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) > 0.001 then 
+					if (self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) < 0 then
+						self.LFC.consumption.animDirection = -1;
+					else
+						self.LFC.consumption.animDirection = 1;
+					end;
+					FertilizerControl:playAnimation_test(self);
 				end;
 			end;
 		end;
@@ -179,5 +235,51 @@ function FertilizerControl:draw()
 				g_currentMission:addExtraPrintText(string.format(g_i18n:getText("lfc_consumptionIndicator"), self.LFC.fConsumption));
 			end;
 		end;
+	end;
+end;
+
+--
+-- Helper functions for animations
+--
+
+function FertilizerControl:setAnimTime_test(vehicle, animTime)
+	if vehicle.LFC.consumption.animClip ~= nil then 
+		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
+			setAnimTrackTime(vehicle.LFC.consumption.animClip.animCharSet, 0, vehicle.LFC.consumption.animClip.animDuration*animTime);
+		end;
+	elseif vehicle.LFC.consumption.animation ~= nil then
+		vehicle:setAnimationTime(vehicle.LFC.consumption.animation, animTime, true);
+	end;
+end;
+
+function FertilizerControl:getAnimTime_test(vehicle)
+	if vehicle.LFC.consumption.animClip ~= nil then 
+		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
+			return Utils.clamp((getAnimTrackTime(vehicle.LFC.consumption.animClip.animCharSet, 0)/vehicle.LFC.consumption.animClip.animDuration), 0, 1);
+		end;
+	elseif vehicle.LFC.consumption.animation ~= nil then
+		return Utils.clamp(vehicle:getAnimationTime(vehicle.LFC.consumption.animation), 0, 1);
+	end;
+	return 0;
+end;
+
+function FertilizerControl:playAnimation_test(vehicle)
+	if vehicle.LFC.consumption.animClip ~= nil then 
+		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
+			setAnimTrackSpeedScale(vehicle.LFC.consumption.animClip.animCharSet, 0, vehicle.LFC.consumption.animDirection*vehicle.LFC.consumption.animSpeedScale);
+			enableAnimTrack(vehicle.LFC.consumption.animClip.animCharSet, 0);
+		end;
+	elseif vehicle.LFC.consumption.animation ~= nil then
+		vehicle:playAnimation(vehicle.LFC.consumption.animation, vehicle.LFC.consumption.animDirection*vehicle.LFC.consumption.animSpeedScale, FertilizerControl:getAnimTime_test(vehicle));
+	end;
+end;
+
+function FertilizerControl:stopAnimation_test(vehicle)
+	if vehicle.LFC.consumption.animClip ~= nil then 
+		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
+			disableAnimTrack(vehicle.LFC.consumption.animClip.animCharSet, 0);
+		end;
+	elseif vehicle.LFC.consumption.animation ~= nil then
+		vehicle:stopAnimation(vehicle.LFC.consumption.animation);
 	end;
 end;
