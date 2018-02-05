@@ -14,8 +14,6 @@
 -- This is development version! DO not use it on release!
 --
 --
--- TODO: FIX setting animation after game loads
--- TODO: test i3d animations
 -- TODO: support for changing dose by non linear steps
 -- TODO: solve floating point inaccuracy 
 -- TODO: revide code and decrese algo complexity
@@ -65,7 +63,7 @@ function FertilizerControl:load(savegame)
 			if self.LFC.consumption.animClip.animCharSet ~= 0 then
 				local clip = getAnimClipIndex(self.LFC.consumption.animClip.animCharSet, getXMLString(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#clip"));
 				assignAnimTrackClip(self.LFC.consumption.animClip.animCharSet, 0, clip);
-				setAnimTrackLoopState(self.LFC.consumption.animClip.animCharSet, 0, looping);
+				setAnimTrackLoopState(self.LFC.consumption.animClip.animCharSet, 0, false);
 				self.LFC.consumption.animClip.animDuration = getAnimClipDuration(self.LFC.consumption.animClip.animCharSet, clip);
 				setAnimTrackTime(self.LFC.consumption.animClip.animCharSet, 0, 0);
 			end;
@@ -88,6 +86,8 @@ function FertilizerControl:postLoad(savegame)
 		self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v
 	end;
 	FertilizerControl:setAnimTime_test(self, ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum)));
+	self.LFC.consumption.desiredAnimTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
+	FertilizerControl:playAnimation_test(self);
 end;
 
 function FertilizerControl:getSaveAttributesAndNodes(nodeIdent)
