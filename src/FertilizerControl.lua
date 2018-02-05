@@ -7,14 +7,13 @@
 -- Free for non-comerecial usage!
 --
 -- version ID   - 1.0.0
--- version date - 2018-01-28 22:05
+-- version date - 2018-02-05 20:32
 --
 -- used namespace: LFC
 --
 -- This is development version! DO not use it on release!
 --
 --
--- TODO: support for changing dose by non linear steps
 -- TODO: solve floating point inaccuracy 
 -- TODO: revide code and decrese algo complexity
 -- TODO: MP connection
@@ -41,14 +40,60 @@ function FertilizerControl:load(savegame)
 	else
 		self.LFC.width = self.sprayUsageScale.workingWidth;
 	end;
-	self.LFC.minimumDisplaySpeed = Utils.getNoNil(getXMLInt(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#minimumDisplaySpeed"), 4);
-	self.LFC.indicatorAllowed    = Utils.getNoNil(getXMLBool(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#active"), true);
-	self.LFC.indicatorActived    = Utils.getNoNil(getXMLBool(self.xmlFile,	"vehicle.fertilizerControl.consumptionIndicator#defaultActive"), true);
+	self.LFC.minimumDisplaySpeed = Utils.getNoNil(getXMLInt(self.xmlFile,  "vehicle.fertilizerControl.consumptionIndicator#minimumDisplaySpeed"), 4);
+	self.LFC.indicatorAllowed    = Utils.getNoNil(getXMLBool(self.xmlFile, "vehicle.fertilizerControl.consumptionIndicator#active"), true);
+	self.LFC.indicatorActived    = Utils.getNoNil(getXMLBool(self.xmlFile, "vehicle.fertilizerControl.consumptionIndicator#defaultActive"), true);
 	
 	self.LFC.consumption = {};
 	self.LFC.consumption.minimum = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#mminimumScale");
 	self.LFC.consumption.maximum = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#maximumScale");
 	self.LFC.consumption.step    = getXMLFloat(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#scaleStep");
+	
+	self.LFC.consumption.steppingLinear = not (self.LFC.consumption.minimum == nil
+											or self.LFC.consumption.maximum == nil
+											or self.LFC.consumption.step == nil)
+	
+	self.LFC.consumption.stepsScales = {};
+	self.LFC.consumption.currentFixedIndex = 1;
+	self.LFC.consumption.defaultIndex = 1;
+	if not self.LFC.consumption.steppingLinear then
+		local i = 0;
+		local lastSyncedStep = 0;
+		local lastAnimTime = 0;
+		while true do
+			local key = string.format("vehicle.fertilizerControl.fertilizerSetup.step(%d)", i);
+			if not hasXMLProperty(self.xmlFile, key) then
+				break;
+			end;
+			i = i + 1;
+			local scale = Utils.getNoNil(getXMLFloat(self.xmlFile,  key .. "#scale"), 1);
+			local animTime = getXMLFloat(self.xmlFile,  key .. "#animationTime");
+			self.LFC.consumption.stepsScales[i] = {scale=scale};
+			if math.abs(1 - scale) < 0.001 then
+				self.LFC.consumption.currentFixedIndex = i;
+				self.LFC.consumption.defaultIndex = i;
+			end;
+			if animTime ~= nil then
+				local doSteps = (i-lastSyncedStep);
+				local add = (animTime - lastAnimTime)/doSteps;
+				for j=1,doSteps do
+					self.LFC.consumption.stepsScales[lastSyncedStep + j].animScale = lastAnimTime + add*j;
+				end;
+				lastAnimTime = animTime;
+				lastSyncedStep = i;
+			end;
+		end;
+		local doSteps = (i-lastSyncedStep);
+		if doSteps > 0 then
+			local add = (1 - lastAnimTime)/doSteps;
+			for j=1,doSteps do
+				self.LFC.consumption.stepsScales[lastSyncedStep + j].animScale = lastAnimTime + add*j;
+			end;
+		end;
+	end;
+	
+	self.LFC.consumption.steppingFixed = ((#self.LFC.consumption.stepsScales) >= 2)
+	
 	if SpecializationUtil.hasSpecialization(AnimatedVehicle, self.specializations) then
 		self.LFC.consumption.animation = getXMLString(self.xmlFile, "vehicle.fertilizerControl.fertilizerSetup#animation");
 		self.LFC.consumption.animClip  = nil;
@@ -85,8 +130,24 @@ function FertilizerControl:postLoad(savegame)
 	for k,v in pairs(self.LFC.defaultConsumption) do
 		self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v
 	end;
-	FertilizerControl:setAnimTime_test(self, ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum)));
-	self.LFC.consumption.desiredAnimTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
+	if self.LFC.consumption.steppingLinear then
+		local desiredTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
+		FertilizerControl:setAnimTime_test(self, desiredTime);
+		self.LFC.consumption.desiredAnimTime = desiredTime;
+	elseif self.LFC.consumption.steppingFixed then
+		local lastScale;
+		local desiredTime = 0;
+		for k,v in pairs(self.LFC.consumption.stepsScales) do
+			lastScale = v.animScale;
+			if 0.001 > math.abs(self.sprayUsageScale.default - v.scale) then
+				self.LFC.consumption.currentFixedIndex = k;
+				break;
+			end;
+		end;
+		desiredTime = lastScale;
+		FertilizerControl:setAnimTime_test(self, desiredTime);
+		self.LFC.consumption.desiredAnimTime = desiredTime;
+	end;
 	FertilizerControl:playAnimation_test(self);
 end;
 
@@ -118,42 +179,82 @@ function FertilizerControl:update(dt)
 			self.LFC.settingStatus = not self.LFC.settingStatus;
 		end;
 		if self.LFC.settingStatus then
-			local valueChanged = false;
 			if self.LFC.indicatorAllowed then
 				if InputBinding.hasEvent(InputBinding.lfc_showConsumption) then
 					self.LFC.indicatorActived = not self.LFC.indicatorActived;
 				end;
 			end;
-			if InputBinding.hasEvent(InputBinding.lfc_consumptionDefault) then
-				self.sprayUsageScale.default = self.LFC.defaultConsumptionDefault;
-				for k,v in pairs(self.LFC.defaultConsumption) do
-					self.sprayUsageScale.fillTypeScales[k] = v;
-				end;
-				valueChanged = true;
-			end;
-			if InputBinding.hasEvent(InputBinding.lfc_consumptionUp) and (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
-				self.sprayUsageScale.default = self.sprayUsageScale.default + self.LFC.consumption.step;
-				for k,v in pairs(self.LFC.defaultConsumption) do
-					self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
-				end;
-				valueChanged = true;
-			end;
-			if InputBinding.hasEvent(InputBinding.lfc_consumptionDown) and (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
-				self.sprayUsageScale.default = self.sprayUsageScale.default - self.LFC.consumption.step;
-				for k,v in pairs(self.LFC.defaultConsumption) do
-					self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
-				end;
-				valueChanged = true;
-			end;
-			if valueChanged then
-				self.LFC.consumption.desiredAnimTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
-				if math.abs(self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) > 0.001 then 
-					if (self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) < 0 then
-						self.LFC.consumption.animDirection = -1;
-					else
-						self.LFC.consumption.animDirection = 1;
+			if self.LFC.consumption.steppingLinear or self.LFC.consumption.steppingFixed then
+				local valueChanged = false;
+				if InputBinding.hasEvent(InputBinding.lfc_consumptionDefault) then
+					if self.LFC.consumption.steppingLinear then
+						self.sprayUsageScale.default = self.LFC.defaultConsumptionDefault;
+					elseif self.LFC.consumption.steppingFixed then
+						self.sprayUsageScale.default = self.LFC.consumption.stepsScales[self.LFC.consumption.defaultIndex].scale;
+						self.LFC.consumption.currentFixedIndex = self.LFC.consumption.defaultIndex;
 					end;
-					FertilizerControl:playAnimation_test(self);
+					for k,v in pairs(self.LFC.defaultConsumption) do
+						self.sprayUsageScale.fillTypeScales[k] = v;
+					end;
+					valueChanged = true;
+				end;
+				if InputBinding.hasEvent(InputBinding.lfc_consumptionUp) then
+					if self.LFC.consumption.steppingLinear then 
+						if (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
+							self.sprayUsageScale.default = self.sprayUsageScale.default + self.LFC.consumption.step;
+							valueChanged = true;
+						end;
+					elseif self.LFC.consumption.steppingFixed then
+						if self.LFC.consumption.currentFixedIndex < (#self.LFC.consumption.stepsScales) then
+							self.LFC.consumption.currentFixedIndex = self.LFC.consumption.currentFixedIndex + 1;
+							self.sprayUsageScale.default = self.LFC.consumption.stepsScales[self.LFC.consumption.currentFixedIndex].scale;
+							valueChanged = true;
+						end;
+					end;
+					for k,v in pairs(self.LFC.defaultConsumption) do
+						self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
+					end;
+				end;
+				if InputBinding.hasEvent(InputBinding.lfc_consumptionDown) then
+					if self.LFC.consumption.steppingLinear then 
+						if (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
+							self.sprayUsageScale.default = self.sprayUsageScale.default - self.LFC.consumption.step;
+							valueChanged = true;
+						end;
+					elseif self.LFC.consumption.steppingFixed then
+						if self.LFC.consumption.currentFixedIndex > 1 then
+							self.LFC.consumption.currentFixedIndex = self.LFC.consumption.currentFixedIndex - 1;
+							self.sprayUsageScale.default = self.LFC.consumption.stepsScales[self.LFC.consumption.currentFixedIndex].scale;
+							valueChanged = true;
+						end;
+					end;
+					for k,v in pairs(self.LFC.defaultConsumption) do
+						self.sprayUsageScale.fillTypeScales[k] = (self.sprayUsageScale.default/self.LFC.defaultConsumptionDefault)*v;
+					end;
+				end;
+				if valueChanged then
+					if self.LFC.consumption.steppingLinear then
+						self.LFC.consumption.desiredAnimTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
+					elseif self.LFC.consumption.steppingFixed then
+						local lastScale = 0 ;
+						local desiredTime = 0;
+						for k,v in pairs(self.LFC.consumption.stepsScales) do
+							lastScale = v.animScale;
+							if math.abs(self.sprayUsageScale.default - v.scale) < 0.001 then
+								break;
+							end;
+						end;
+						desiredTime = lastScale;
+						self.LFC.consumption.desiredAnimTime = desiredTime;
+					end;
+					if math.abs(self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) > 0.001 then 
+						if (self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) < 0 then
+							self.LFC.consumption.animDirection = -1;
+						else
+							self.LFC.consumption.animDirection = 1;
+						end;
+						FertilizerControl:playAnimation_test(self);
+					end;
 				end;
 			end;
 		end;
@@ -217,14 +318,28 @@ function FertilizerControl:draw()
 					g_currentMission:addHelpButtonText(g_i18n:getText("lfc_showConsumption_s"), InputBinding.lfc_showConsumption, nil, GS_PRIO_HIGH);
 				end;
 			end;
-			if (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
-				g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp, nil, GS_PRIO_HIGH);
+			if self.LFC.consumption.steppingLinear or self.LFC.consumption.steppingFixed then
+				if self.LFC.consumption.steppingLinear then
+					if (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
+						g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp, nil, GS_PRIO_HIGH);
+					end;
+				else
+					if self.LFC.consumption.currentFixedIndex < (#self.LFC.consumption.stepsScales) then
+						g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp, nil, GS_PRIO_HIGH);
+					end;
+				end;
+				g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDefault"), InputBinding.lfc_consumptionDefault, nil, GS_PRIO_HIGH);
+				if self.LFC.consumption.steppingLinear then
+					if (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
+						g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDown"), InputBinding.lfc_consumptionDown, nil, GS_PRIO_HIGH);
+					end;
+				else
+					if self.LFC.consumption.currentFixedIndex < (#self.LFC.consumption.stepsScales) then
+						g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp, nil, GS_PRIO_HIGH);
+					end;
+				end;
+				g_currentMission:addExtraPrintText(string.format(g_i18n:getText("lfc_currentConsumption"), self:getLitersPerSecond(self.LFC.currentFillType)));
 			end;
-			g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDefault"), InputBinding.lfc_consumptionDefault, nil, GS_PRIO_HIGH);
-			if (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
-				g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDown"), InputBinding.lfc_consumptionDown, nil, GS_PRIO_HIGH);
-			end;
-			g_currentMission:addExtraPrintText(string.format(g_i18n:getText("lfc_currentConsumption"), self:getLitersPerSecond(self.LFC.currentFillType)));
 		end;
 	
 		if self.LFC.indicatorAllowed and self.LFC.indicatorActived then
