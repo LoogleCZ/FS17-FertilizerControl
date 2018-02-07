@@ -14,7 +14,6 @@
 -- This is development version! DO not use it on release!
 --
 --
--- TODO: solve floating point inaccuracy 
 -- TODO: revide code and decrese algo complexity
 -- TODO: MP connection
 --
@@ -189,7 +188,7 @@ function FertilizerControl:update(dt)
 				if InputBinding.hasEvent(InputBinding.lfc_consumptionDefault) then
 					if self.LFC.consumption.steppingLinear then
 						self.sprayUsageScale.default = self.LFC.defaultConsumptionDefault;
-					elseif self.LFC.consumption.steppingFixed then
+					else
 						self.sprayUsageScale.default = self.LFC.consumption.stepsScales[self.LFC.consumption.defaultIndex].scale;
 						self.LFC.consumption.currentFixedIndex = self.LFC.consumption.defaultIndex;
 					end;
@@ -200,11 +199,11 @@ function FertilizerControl:update(dt)
 				end;
 				if InputBinding.hasEvent(InputBinding.lfc_consumptionUp) then
 					if self.LFC.consumption.steppingLinear then 
-						if (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
+						if (self.sprayUsageScale.default + self.LFC.consumption.step - 0.001) <= self.LFC.consumption.maximum then
 							self.sprayUsageScale.default = self.sprayUsageScale.default + self.LFC.consumption.step;
 							valueChanged = true;
 						end;
-					elseif self.LFC.consumption.steppingFixed then
+					else
 						if self.LFC.consumption.currentFixedIndex < (#self.LFC.consumption.stepsScales) then
 							self.LFC.consumption.currentFixedIndex = self.LFC.consumption.currentFixedIndex + 1;
 							self.sprayUsageScale.default = self.LFC.consumption.stepsScales[self.LFC.consumption.currentFixedIndex].scale;
@@ -217,11 +216,11 @@ function FertilizerControl:update(dt)
 				end;
 				if InputBinding.hasEvent(InputBinding.lfc_consumptionDown) then
 					if self.LFC.consumption.steppingLinear then 
-						if (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
+						if (self.sprayUsageScale.default - self.LFC.consumption.step + 0.001) >= self.LFC.consumption.minimum then
 							self.sprayUsageScale.default = self.sprayUsageScale.default - self.LFC.consumption.step;
 							valueChanged = true;
 						end;
-					elseif self.LFC.consumption.steppingFixed then
+					else
 						if self.LFC.consumption.currentFixedIndex > 1 then
 							self.LFC.consumption.currentFixedIndex = self.LFC.consumption.currentFixedIndex - 1;
 							self.sprayUsageScale.default = self.LFC.consumption.stepsScales[self.LFC.consumption.currentFixedIndex].scale;
@@ -235,7 +234,7 @@ function FertilizerControl:update(dt)
 				if valueChanged then
 					if self.LFC.consumption.steppingLinear then
 						self.LFC.consumption.desiredAnimTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
-					elseif self.LFC.consumption.steppingFixed then
+					else
 						local lastScale = 0 ;
 						local desiredTime = 0;
 						for k,v in pairs(self.LFC.consumption.stepsScales) do
@@ -320,7 +319,7 @@ function FertilizerControl:draw()
 			end;
 			if self.LFC.consumption.steppingLinear or self.LFC.consumption.steppingFixed then
 				if self.LFC.consumption.steppingLinear then
-					if (self.sprayUsageScale.default + self.LFC.consumption.step) <= self.LFC.consumption.maximum then
+					if (self.sprayUsageScale.default + self.LFC.consumption.step - 0.001) <= self.LFC.consumption.maximum then
 						g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionUp"), InputBinding.lfc_consumptionUp, nil, GS_PRIO_HIGH);
 					end;
 				else
@@ -330,7 +329,7 @@ function FertilizerControl:draw()
 				end;
 				g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDefault"), InputBinding.lfc_consumptionDefault, nil, GS_PRIO_HIGH);
 				if self.LFC.consumption.steppingLinear then
-					if (self.sprayUsageScale.default - self.LFC.consumption.step) >= self.LFC.consumption.minimum then
+					if (self.sprayUsageScale.default - self.LFC.consumption.step + 0.001) >= self.LFC.consumption.minimum then
 						g_currentMission:addHelpButtonText(g_i18n:getText("lfc_consumptionDown"), InputBinding.lfc_consumptionDown, nil, GS_PRIO_HIGH);
 					end;
 				else
