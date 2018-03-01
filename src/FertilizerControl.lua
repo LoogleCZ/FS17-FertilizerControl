@@ -304,8 +304,33 @@ function FertilizerControl:updateTick(dt)
 	end;
 end;
 
-function FertilizerControl:readStream(streamId, connection) end;
-function FertilizerControl:writeStream(streamId, connection) end;
+function FertilizerControl:readStream(streamId, connection)
+	self.sprayUsageScale.default = streamReadFloat32(streamId);
+	if self.LFC.consumption.steppingLinear then
+		local desiredTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
+		FertilizerControl:LFC_setAnimTime(self, desiredTime);
+		self.LFC.consumption.desiredAnimTime = desiredTime;
+	elseif self.LFC.consumption.steppingFixed then
+		self.LFC.consumption.currentFixedIndex = streamReadInt16(streamId);
+		local desiredTime = self.LFC.consumption.stepsScales[self.LFC.consumption.currentFixedIndex].animScale;
+		FertilizerControl:LFC_setAnimTime(self, desiredTime);
+		self.LFC.consumption.desiredAnimTime = desiredTime;
+	end;
+	if (self.LFC.consumption.desiredAnimTime - FertilizerControl:LFC_getAnimTime(self)) < 0 then
+		self.LFC.consumption.animDirection = -1;
+	else
+		self.LFC.consumption.animDirection = 1;
+	end;
+	self.LFC.updateAnimDone = false;
+end;
+
+function FertilizerControl:writeStream(streamId, connection)
+	streamWriteFloat32(streamId, self.sprayUsageScale.default);
+	if not self.LFC.consumption.steppingLinear then
+		streamWriteInt16(streamId, self.LFC.consumption.currentFixedIndex);
+	end;
+end;
+
 function FertilizerControl:mouseEvent(posX, posY, isDown, isUp, button) end;
 function FertilizerControl:keyEvent(unicode, sym, modifier, isDown) end;
 
