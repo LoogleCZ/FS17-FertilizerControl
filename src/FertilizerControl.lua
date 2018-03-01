@@ -7,14 +7,12 @@
 -- Free for non-comerecial usage!
 --
 -- version ID   - 1.0.0
--- version date - 2018-02-05 20:32
+-- version date - 2018-03-01 21:30
 --
 -- used namespace: LFC
 --
 -- This is development version! DO not use it on release!
 --
---
--- TODO: revide code and decrese algo complexity
 -- TODO: MP connection
 --
 
@@ -30,6 +28,7 @@ end;
 
 function FertilizerControl:load(savegame)
 	self.LFC = {};
+	self.LFC.updateAnimDone = false;
 	self.LFC.fConsumption = 0;
 	self.LFC.settingStatus = false;
 	self.LFC.currentFillType = FillUtil.FILLTYPE_UNKNOWN;
@@ -131,7 +130,7 @@ function FertilizerControl:postLoad(savegame)
 	end;
 	if self.LFC.consumption.steppingLinear then
 		local desiredTime = ((self.sprayUsageScale.default - self.LFC.consumption.minimum)/(self.LFC.consumption.maximum - self.LFC.consumption.minimum));
-		FertilizerControl:setAnimTime_test(self, desiredTime);
+		FertilizerControl:LFC_setAnimTime(self, desiredTime);
 		self.LFC.consumption.desiredAnimTime = desiredTime;
 	elseif self.LFC.consumption.steppingFixed then
 		local lastScale;
@@ -144,10 +143,14 @@ function FertilizerControl:postLoad(savegame)
 			end;
 		end;
 		desiredTime = lastScale;
-		FertilizerControl:setAnimTime_test(self, desiredTime);
+		FertilizerControl:LFC_setAnimTime(self, desiredTime);
 		self.LFC.consumption.desiredAnimTime = desiredTime;
 	end;
-	FertilizerControl:playAnimation_test(self);
+	if (self.LFC.consumption.desiredAnimTime - FertilizerControl:LFC_getAnimTime(self)) < 0 then
+		self.LFC.consumption.animDirection = -1;
+	else
+		self.LFC.consumption.animDirection = 1;
+	end;
 end;
 
 function FertilizerControl:getSaveAttributesAndNodes(nodeIdent)
@@ -155,22 +158,25 @@ function FertilizerControl:getSaveAttributesAndNodes(nodeIdent)
     local nodes = "";
 	attributes = attributes .. " defaultFertilizerScale=\"" .. tostring(self.sprayUsageScale.default) .. "\""
     return attributes, nodes;
-end
+end;
 
 function FertilizerControl:delete() end;
 
 function FertilizerControl:update(dt)
 	if self.isClient then
-		if self.LFC.consumption.canAnimation then 
+		if not self.LFC.updateAnimDone then
+			FertilizerControl:LFC_playAnimation(self);
+		end;
+		if self.LFC.consumption.canAnimation and self.LFC.updateAnimDone then 
 			if self.LFC.consumption.animDirection > 0 then 
-				if self.LFC.consumption.desiredAnimTime < FertilizerControl:getAnimTime_test(self) then
-					FertilizerControl:setAnimTime_test(self, self.LFC.consumption.desiredAnimTime);
-					FertilizerControl:stopAnimation_test(self);
+				if self.LFC.consumption.desiredAnimTime < FertilizerControl:LFC_getAnimTime(self) then
+					FertilizerControl:LFC_setAnimTime(self, self.LFC.consumption.desiredAnimTime);
+					FertilizerControl:LFC_stopAnimation(self);
 				end;
 			else
-				if self.LFC.consumption.desiredAnimTime > FertilizerControl:getAnimTime_test(self) then
-					FertilizerControl:setAnimTime_test(self, self.LFC.consumption.desiredAnimTime);
-					FertilizerControl:stopAnimation_test(self);
+				if self.LFC.consumption.desiredAnimTime > FertilizerControl:LFC_getAnimTime(self) then
+					FertilizerControl:LFC_setAnimTime(self, self.LFC.consumption.desiredAnimTime);
+					FertilizerControl:LFC_stopAnimation(self);
 				end;
 			end;
 		end;
@@ -246,17 +252,18 @@ function FertilizerControl:update(dt)
 						desiredTime = lastScale;
 						self.LFC.consumption.desiredAnimTime = desiredTime;
 					end;
-					if math.abs(self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) > 0.001 then 
-						if (self.LFC.consumption.desiredAnimTime - FertilizerControl:getAnimTime_test(self)) < 0 then
+					if math.abs(self.LFC.consumption.desiredAnimTime - FertilizerControl:LFC_getAnimTime(self)) > 0.001 then 
+						if (self.LFC.consumption.desiredAnimTime - FertilizerControl:LFC_getAnimTime(self)) < 0 then
 							self.LFC.consumption.animDirection = -1;
 						else
 							self.LFC.consumption.animDirection = 1;
 						end;
-						FertilizerControl:playAnimation_test(self);
+						FertilizerControl:LFC_playAnimation(self);
 					end;
 				end;
 			end;
 		end;
+		self.LFC.updateAnimDone = true;
 	end;
 end;
 
@@ -356,7 +363,7 @@ end;
 -- Helper functions for animations
 --
 
-function FertilizerControl:setAnimTime_test(vehicle, animTime)
+function FertilizerControl:LFC_setAnimTime(vehicle, animTime)
 	if vehicle.LFC.consumption.animClip ~= nil then 
 		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
 			setAnimTrackTime(vehicle.LFC.consumption.animClip.animCharSet, 0, vehicle.LFC.consumption.animClip.animDuration*animTime);
@@ -366,7 +373,7 @@ function FertilizerControl:setAnimTime_test(vehicle, animTime)
 	end;
 end;
 
-function FertilizerControl:getAnimTime_test(vehicle)
+function FertilizerControl:LFC_getAnimTime(vehicle)
 	if vehicle.LFC.consumption.animClip ~= nil then 
 		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
 			return Utils.clamp((getAnimTrackTime(vehicle.LFC.consumption.animClip.animCharSet, 0)/vehicle.LFC.consumption.animClip.animDuration), 0, 1);
@@ -377,18 +384,18 @@ function FertilizerControl:getAnimTime_test(vehicle)
 	return 0;
 end;
 
-function FertilizerControl:playAnimation_test(vehicle)
+function FertilizerControl:LFC_playAnimation(vehicle)
 	if vehicle.LFC.consumption.animClip ~= nil then 
 		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
 			setAnimTrackSpeedScale(vehicle.LFC.consumption.animClip.animCharSet, 0, vehicle.LFC.consumption.animDirection*vehicle.LFC.consumption.animSpeedScale);
 			enableAnimTrack(vehicle.LFC.consumption.animClip.animCharSet, 0);
 		end;
 	elseif vehicle.LFC.consumption.animation ~= nil then
-		vehicle:playAnimation(vehicle.LFC.consumption.animation, vehicle.LFC.consumption.animDirection*vehicle.LFC.consumption.animSpeedScale, FertilizerControl:getAnimTime_test(vehicle));
+		vehicle:playAnimation(vehicle.LFC.consumption.animation, vehicle.LFC.consumption.animDirection*vehicle.LFC.consumption.animSpeedScale, FertilizerControl:LFC_getAnimTime(vehicle));
 	end;
 end;
 
-function FertilizerControl:stopAnimation_test(vehicle)
+function FertilizerControl:LFC_stopAnimation(vehicle)
 	if vehicle.LFC.consumption.animClip ~= nil then 
 		if vehicle.LFC.consumption.animClip.animCharSet ~= nil then
 			disableAnimTrack(vehicle.LFC.consumption.animClip.animCharSet, 0);
